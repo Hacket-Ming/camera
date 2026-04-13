@@ -1,0 +1,58 @@
+"""YOLOv8 检测器实现。"""
+
+import numpy as np
+from ultralytics import YOLO
+
+from src.common.logger import setup_logger
+from src.common.models import Detection
+from src.detector.base import BaseDetector
+
+logger = setup_logger(__name__)
+
+
+class YOLODetector(BaseDetector):
+    def __init__(self, model_name: str = "yolov8n.pt", confidence: float = 0.5,
+                 target_classes: list[str] | None = None):
+        self._model_name = model_name
+        self._confidence = confidence
+        self._target_classes = set(target_classes) if target_classes else None
+        self._model: YOLO | None = None
+
+    def load(self) -> None:
+        logger.info("加载模型: %s", self._model_name)
+        self._model = YOLO(self._model_name)
+        logger.info("模型加载完成")
+
+    def detect(self, frame: np.ndarray) -> list[Detection]:
+        if self._model is None:
+            raise RuntimeError("模型未加载，请先调用 load()")
+
+        results = self._model(frame, conf=self._confidence, verbose=False)
+        detections = []
+
+        for result in results:
+            for box in result.boxes:
+                label = result.names[int(box.cls[0])]
+                if self._target_classes and label not in self._target_classes:
+                    continue
+                x1, y1, x2, y2 = box.xyxy[0].int().tolist()
+                detections.append(Detection(
+                    label=label,
+                    confidence=float(box.conf[0]),
+                    bbox=(x1, y1, x2, y2),
+                ))
+
+        return detections
+
+    def unload(self) -> None:
+        self._model = None
+        logger.info("模型已释放")
+
+
+def create_detector(config: dict) -> YOLODetector:
+    det_cfg = config["detector"]
+    return YOLODetector(
+        model_name=det_cfg["model"],
+        confidence=det_cfg["confidence"],
+        target_classes=det_cfg.get("target_classes"),
+    )

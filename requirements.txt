@@ -1,0 +1,15 @@
+# 视频采集
+opencv-python>=4.8.0
+
+# 目标检测
+ultralytics>=8.0.0
+
+# Web 服务
+fastapi>=0.110.0
+uvicorn>=0.29.0
+
+# 配置管理
+pyyaml>=6.0
+
+# 数据处理
+numpy>=1.24.0
