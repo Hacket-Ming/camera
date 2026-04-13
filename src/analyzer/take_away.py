@@ -6,6 +6,8 @@
 3. 冷却机制避免重复告警
 """
 
+from __future__ import annotations
+
 import time
 from datetime import datetime
 

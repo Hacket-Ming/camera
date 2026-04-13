@@ -1,5 +1,7 @@
 """采集层抽象基类，定义统一接口。"""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 import numpy as np

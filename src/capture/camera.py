@@ -1,5 +1,7 @@
 """本地摄像头 / RTSP / 视频文件采集实现。"""
 
+from __future__ import annotations
+
 import cv2
 import numpy as np
 

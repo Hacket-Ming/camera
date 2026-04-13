@@ -1,5 +1,7 @@
 """公共数据模型，各层共享。"""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 

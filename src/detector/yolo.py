@@ -1,5 +1,7 @@
 """YOLOv8 检测器实现。"""
 
+from __future__ import annotations
+
 import numpy as np
 from ultralytics import YOLO
 
