@@ -15,6 +15,8 @@ class Detection:
     confidence: float
     # 边界框 (x1, y1, x2, y2)，像素坐标
     bbox: tuple[int, int, int, int]
+    # 追踪 ID，启用追踪后由 tracker 分配；首帧或未启用时为 None
+    track_id: int | None = None
 
 
 @dataclass

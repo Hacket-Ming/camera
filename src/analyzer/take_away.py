@@ -1,90 +1,142 @@
-"""'拿东西走'行为识别 — 基于规则的实现。
+"""'拿东西走'行为识别 — 基于追踪的实现。
 
 策略：
-1. 追踪 ROI 区域内的物体数量
-2. 当检测到人出现且物体数量减少时，判定为"拿东西走"
-3. 冷却机制避免重复告警
+1. 用 track_id 追踪每个物体的出现帧和位置历史
+2. 物体连续 N 帧未出现 → 视为"消失"
+3. 检查消失前最近 M 帧内附近是否有人 → 判定"被拿走"
+4. 冷却机制避免重复告警
 """
 
 from __future__ import annotations
 
 import time
+from collections import deque
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import cv2
 import numpy as np
 
+from src.analyzer.base import BaseAnalyzer
 from src.common.logger import setup_logger
 from src.common.models import Detection, Event, FrameData
-from src.analyzer.base import BaseAnalyzer
 
 logger = setup_logger(__name__)
 
-# 非人物类别，用于统计物体
 _PERSON_LABEL = "person"
 
 
+@dataclass
+class TrackState:
+    """单个被追踪物体的状态。"""
+    track_id: int
+    label: str
+    last_seen_frame: int
+    last_bbox: tuple[int, int, int, int]
+    # 最近 N 帧中是否有人靠近的历史（True/False 队列）
+    person_nearby_history: deque = field(default_factory=lambda: deque(maxlen=30))
+
+
 class TakeAwayAnalyzer(BaseAnalyzer):
-    def __init__(self, disappear_frames: int = 15, alert_cooldown: float = 10.0):
+    def __init__(
+        self,
+        disappear_frames: int = 15,
+        recent_frames_window: int = 30,
+        proximity_distance: float = 200.0,
+        alert_cooldown: float = 10.0,
+    ):
         self._disappear_frames = disappear_frames
+        self._recent_frames_window = recent_frames_window
+        self._proximity_distance = proximity_distance
         self._alert_cooldown = alert_cooldown
 
-        # 内部状态
-        self._baseline_object_count: int | None = None
-        self._missing_counter: int = 0
+        self._tracks: dict[int, TrackState] = {}
         self._last_alert_time: float = 0.0
-        self._person_present: bool = False
 
     def analyze(self, frame_data: FrameData) -> list[Event]:
         detections = frame_data.detections
+        frame_id = frame_data.frame_id
+
         persons = [d for d in detections if d.label == _PERSON_LABEL]
-        objects = [d for d in detections if d.label != _PERSON_LABEL]
+        objects = [
+            d for d in detections
+            if d.label != _PERSON_LABEL and d.track_id is not None
+        ]
 
-        self._person_present = len(persons) > 0
-        current_count = len(objects)
+        # 更新本帧出现的物体状态
+        seen_track_ids = set()
+        for obj in objects:
+            seen_track_ids.add(obj.track_id)
+            state = self._tracks.get(obj.track_id)
+            if state is None:
+                state = TrackState(
+                    track_id=obj.track_id,
+                    label=obj.label,
+                    last_seen_frame=frame_id,
+                    last_bbox=obj.bbox,
+                    person_nearby_history=deque(maxlen=self._recent_frames_window),
+                )
+                self._tracks[obj.track_id] = state
+            state.last_seen_frame = frame_id
+            state.last_bbox = obj.bbox
+            state.person_nearby_history.append(self._has_person_nearby(obj.bbox, persons))
 
-        # 初始化基线
-        if self._baseline_object_count is None:
-            self._baseline_object_count = current_count
-            return []
-
+        # 检测消失的物体
         events = []
+        disappeared_ids = []
+        for tid, state in self._tracks.items():
+            if tid in seen_track_ids:
+                continue
+            missing = frame_id - state.last_seen_frame
+            if missing >= self._disappear_frames:
+                # 消失前最近窗口内是否有人靠近
+                if any(state.person_nearby_history):
+                    event = self._make_event(state, frame_data)
+                    if event is not None:
+                        events.append(event)
+                disappeared_ids.append(tid)
 
-        # 物体数量减少且有人在场
-        if self._person_present and current_count < self._baseline_object_count:
-            self._missing_counter += 1
-        else:
-            self._missing_counter = max(0, self._missing_counter - 1)
-
-        # 连续多帧物体减少，触发告警
-        if self._missing_counter >= self._disappear_frames:
-            now = time.time()
-            if now - self._last_alert_time > self._alert_cooldown:
-                snapshot = self._encode_snapshot(frame_data.frame)
-                events.append(Event(
-                    event_type="take_away",
-                    description=(
-                        f"检测到拿走行为: 物体数量从 {self._baseline_object_count} "
-                        f"减少到 {current_count}"
-                    ),
-                    timestamp=frame_data.timestamp,
-                    snapshot=snapshot,
-                ))
-                self._last_alert_time = now
-                logger.warning("触发告警: 拿东西走 (物体 %d → %d)",
-                               self._baseline_object_count, current_count)
-
-            # 更新基线
-            self._baseline_object_count = current_count
-            self._missing_counter = 0
+        # 清理已消失的 track
+        for tid in disappeared_ids:
+            del self._tracks[tid]
 
         return events
 
+    def _make_event(self, state: TrackState, frame_data: FrameData) -> Event | None:
+        now = time.time()
+        if now - self._last_alert_time < self._alert_cooldown:
+            return None
+        self._last_alert_time = now
+
+        snapshot = self._encode_snapshot(frame_data.frame)
+        description = f"{state.label} #{state.track_id} 被拿走"
+        logger.warning("触发告警: %s", description)
+        return Event(
+            event_type="take_away",
+            description=description,
+            timestamp=frame_data.timestamp,
+            snapshot=snapshot,
+        )
+
+    def _has_person_nearby(
+        self,
+        obj_bbox: tuple[int, int, int, int],
+        persons: list[Detection],
+    ) -> bool:
+        if not persons:
+            return False
+        ox = (obj_bbox[0] + obj_bbox[2]) / 2
+        oy = (obj_bbox[1] + obj_bbox[3]) / 2
+        for p in persons:
+            px = (p.bbox[0] + p.bbox[2]) / 2
+            py = (p.bbox[1] + p.bbox[3]) / 2
+            if ((ox - px) ** 2 + (oy - py) ** 2) ** 0.5 <= self._proximity_distance:
+                return True
+        return False
+
     def reset(self) -> None:
-        self._baseline_object_count = None
-        self._missing_counter = 0
+        self._tracks.clear()
         self._last_alert_time = 0.0
-        self._person_present = False
 
     @staticmethod
     def _encode_snapshot(frame: np.ndarray) -> bytes:
@@ -96,5 +148,7 @@ def create_analyzer(config: dict) -> TakeAwayAnalyzer:
     ana_cfg = config["analyzer"]
     return TakeAwayAnalyzer(
         disappear_frames=ana_cfg["disappear_frames"],
+        recent_frames_window=ana_cfg.get("recent_frames_window", 30),
+        proximity_distance=ana_cfg.get("proximity_distance", 200.0),
         alert_cooldown=ana_cfg["alert_cooldown"],
     )

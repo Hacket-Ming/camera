@@ -30,13 +30,21 @@ detector:
     - cup
     - cell phone
     - book
+  # 追踪配置（启用后用 ByteTrack 给每个检测分配 track_id）
+  tracking:
+    enabled: true
+    tracker: bytetrack.yaml
 
 # 分析器配置
 analyzer:
   # 感兴趣区域（归一化坐标 0~1，留空表示全画面）
   roi: []
-  # 物体消失判定帧数（连续 N 帧未检测到则判定消失）
+  # 物体连续 N 帧未出现则判定消失
   disappear_frames: 15
+  # 物体消失前查看最近 N 帧内是否有人靠近
+  recent_frames_window: 30
+  # 物体与人的关联距离（像素，bbox 中心距离阈值）
+  proximity_distance: 200
   # 行为告警冷却时间（秒）
   alert_cooldown: 10
 

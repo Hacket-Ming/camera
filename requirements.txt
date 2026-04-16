@@ -1,8 +1,9 @@
 # 视频采集
 opencv-python>=4.8.0
 
-# 目标检测
+# 目标检测 + 追踪
 ultralytics>=8.0.0
+lap>=0.5.12  # ByteTrack/BoT-SORT 追踪依赖
 
 # Web 服务
 fastapi>=0.110.0
