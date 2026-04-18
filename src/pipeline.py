@@ -12,8 +12,9 @@ import numpy as np
 from src.analyzer.base import BaseAnalyzer
 from src.capture.base import BaseCapture
 from src.common.logger import setup_logger
-from src.common.models import FrameData
+from src.common.models import FrameData, Roi
 from src.detector.base import BaseDetector
+from src.storage.base import BaseEventStore
 
 logger = setup_logger(__name__)
 
@@ -30,10 +31,14 @@ class Pipeline:
     """视频处理管线 — 串联 采集→检测→分析→渲染。"""
 
     def __init__(self, capture: BaseCapture, detector: BaseDetector,
-                 analyzer: BaseAnalyzer, fps_window: int = 30):
+                 analyzer: BaseAnalyzer, fps_window: int = 30,
+                 event_store: BaseEventStore | None = None,
+                 roi: Roi | None = None):
         self._capture = capture
         self._detector = detector
         self._analyzer = analyzer
+        self._event_store = event_store
+        self._roi = roi
         self._frame_id = 0
         self._running = False
         self._frame_times: deque[float] = deque(maxlen=fps_window)
@@ -64,6 +69,11 @@ class Pipeline:
                 events = self._analyzer.analyze(frame_data)
                 for event in events:
                     logger.info("事件: [%s] %s", event.event_type, event.description)
+                    if self._event_store is not None:
+                        try:
+                            self._event_store.save(event)
+                        except Exception:
+                            logger.exception("事件持久化失败")
 
                 self._frame_times.append(time.perf_counter() - t0)
                 fps = self._compute_fps()
@@ -82,6 +92,11 @@ class Pipeline:
         self._running = False
         self._capture.release()
         self._detector.unload()
+        if self._event_store is not None:
+            try:
+                self._event_store.close()
+            except Exception:
+                logger.exception("事件存储关闭失败")
         cv2.destroyAllWindows()
         logger.info("管线已停止")
 
@@ -94,6 +109,11 @@ class Pipeline:
     def _draw_overlay(self, frame: np.ndarray, frame_data: FrameData,
                       fps: float) -> np.ndarray:
         annotated = frame.copy()
+
+        if self._roi is not None and not self._roi.is_empty():
+            h, w = annotated.shape[:2]
+            pts = np.array(self._roi.to_pixels(w, h), dtype=np.int32).reshape(-1, 1, 2)
+            cv2.polylines(annotated, [pts], isClosed=True, color=(255, 255, 0), thickness=2)
 
         for det in frame_data.detections:
             x1, y1, x2, y2 = det.bbox

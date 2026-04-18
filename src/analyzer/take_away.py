@@ -19,7 +19,7 @@ import numpy as np
 
 from src.analyzer.base import BaseAnalyzer
 from src.common.logger import setup_logger
-from src.common.models import Detection, Event, FrameData
+from src.common.models import Detection, Event, FrameData, Roi
 
 logger = setup_logger(__name__)
 
@@ -44,11 +44,13 @@ class TakeAwayAnalyzer(BaseAnalyzer):
         recent_frames_window: int = 30,
         proximity_distance: float = 200.0,
         alert_cooldown: float = 10.0,
+        roi: Roi | None = None,
     ):
         self._disappear_frames = disappear_frames
         self._recent_frames_window = recent_frames_window
         self._proximity_distance = proximity_distance
         self._alert_cooldown = alert_cooldown
+        self._roi = roi
 
         self._tracks: dict[int, TrackState] = {}
         self._last_alert_time: float = 0.0
@@ -56,11 +58,14 @@ class TakeAwayAnalyzer(BaseAnalyzer):
     def analyze(self, frame_data: FrameData) -> list[Event]:
         detections = frame_data.detections
         frame_id = frame_data.frame_id
+        h, w = frame_data.frame.shape[:2]
 
         persons = [d for d in detections if d.label == _PERSON_LABEL]
         objects = [
             d for d in detections
-            if d.label != _PERSON_LABEL and d.track_id is not None
+            if d.label != _PERSON_LABEL
+            and d.track_id is not None
+            and self._in_roi(d.bbox, w, h)
         ]
 
         # 更新本帧出现的物体状态
@@ -116,7 +121,21 @@ class TakeAwayAnalyzer(BaseAnalyzer):
             description=description,
             timestamp=frame_data.timestamp,
             snapshot=snapshot,
+            metadata={
+                "track_id": state.track_id,
+                "label": state.label,
+                "last_bbox": list(state.last_bbox),
+                "last_seen_frame": state.last_seen_frame,
+                "current_frame": frame_data.frame_id,
+            },
         )
+
+    def _in_roi(self, bbox: tuple[int, int, int, int], width: int, height: int) -> bool:
+        if self._roi is None or self._roi.is_empty():
+            return True
+        cx = (bbox[0] + bbox[2]) / 2
+        cy = (bbox[1] + bbox[3]) / 2
+        return self._roi.contains_point(cx, cy, width, height)
 
     def _has_person_nearby(
         self,
@@ -146,9 +165,12 @@ class TakeAwayAnalyzer(BaseAnalyzer):
 
 def create_analyzer(config: dict) -> TakeAwayAnalyzer:
     ana_cfg = config["analyzer"]
+    roi_points = ana_cfg.get("roi") or []
+    roi = Roi(polygon_norm=[tuple(p) for p in roi_points]) if roi_points else None
     return TakeAwayAnalyzer(
         disappear_frames=ana_cfg["disappear_frames"],
         recent_frames_window=ana_cfg.get("recent_frames_window", 30),
         proximity_distance=ana_cfg.get("proximity_distance", 200.0),
         alert_cooldown=ana_cfg["alert_cooldown"],
+        roi=roi,
     )

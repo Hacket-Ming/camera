@@ -11,10 +11,12 @@ import sys
 
 from src.common.config import load_config
 from src.common.logger import setup_logger
+from src.common.models import Roi
 from src.capture.camera import create_capture
 from src.detector.yolo import create_detector
 from src.analyzer.take_away import create_analyzer
 from src.pipeline import Pipeline
+from src.storage.sqlite_store import create_event_store
 
 logger = setup_logger("main")
 
@@ -33,8 +35,13 @@ def main():
     capture = create_capture(config)
     detector = create_detector(config)
     analyzer = create_analyzer(config)
+    event_store = create_event_store(config)
 
-    pipeline = Pipeline(capture, detector, analyzer)
+    roi_points = (config.get("analyzer") or {}).get("roi") or []
+    roi = Roi(polygon_norm=[tuple(p) for p in roi_points]) if roi_points else None
+
+    pipeline = Pipeline(capture, detector, analyzer,
+                        event_store=event_store, roi=roi)
 
     try:
         pipeline.run(show_window=not args.no_window)

@@ -55,6 +55,12 @@ server:
   # 推送画面质量（JPEG 压缩质量 1-100）
   stream_quality: 70
 
-# 数据库配置
+# 数据库配置（向下兼容）
 database:
   path: data/events/events.db
+
+# 事件存储配置（Phase 3）
+storage:
+  enabled: true
+  database_path: data/events/events.db
+  snapshot_dir: data/snapshots
