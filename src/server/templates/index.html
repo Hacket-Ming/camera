@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>智能摄像头监控</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <h1>智能摄像头行为识别</h1>
+        <span id="conn-status" class="status disconnected">未连接</span>
+    </header>
+
+    <main>
+        <section class="video-panel">
+            <h2>实时画面</h2>
+            <div class="video-wrap">
+                <img id="stream" alt="摄像头画面">
+                <div id="stream-placeholder">等待画面…</div>
+            </div>
+            <p class="hint">按 ESC 关闭浏览器窗口；服务端在终端运行 <code>python main.py --serve</code></p>
+        </section>
+
+        <section class="event-panel">
+            <h2>事件记录</h2>
+            <button id="refresh-btn">刷新历史</button>
+            <ul id="events"></ul>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

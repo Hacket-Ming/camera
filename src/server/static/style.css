@@ -1,0 +1,103 @@
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #1a1a1a;
+    color: #e8e8e8;
+}
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: #0d0d0d;
+    border-bottom: 1px solid #333;
+}
+header h1 { font-size: 18px; margin: 0; }
+.status {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+.status.connected { background: #1b5e20; color: #a5d6a7; }
+.status.disconnected { background: #4a1818; color: #ef9a9a; }
+
+main {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    padding: 16px;
+}
+@media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+}
+
+section {
+    background: #242424;
+    border-radius: 8px;
+    padding: 16px;
+}
+section h2 { margin-top: 0; font-size: 16px; color: #ccc; }
+
+.video-wrap {
+    position: relative;
+    background: #000;
+    border-radius: 4px;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+}
+#stream {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: none;
+}
+#stream.active { display: block; }
+#stream-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #777;
+}
+
+.hint { font-size: 12px; color: #888; }
+.hint code { background: #333; padding: 2px 6px; border-radius: 3px; }
+
+#refresh-btn {
+    background: #2a4d8f;
+    color: white;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 12px;
+}
+#refresh-btn:hover { background: #3a5fa3; }
+
+#events {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+#events li {
+    background: #1a1a1a;
+    border-left: 3px solid #ff6b35;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+#events li.fresh {
+    animation: flash 1.2s ease-out;
+}
+@keyframes flash {
+    0% { background: #ff6b35; color: #000; }
+    100% { background: #1a1a1a; color: #e8e8e8; }
+}
+#events .ts { color: #888; font-size: 11px; }
+#events .desc { font-weight: bold; margin: 2px 0; }
+#events .meta { color: #aaa; font-size: 11px; }

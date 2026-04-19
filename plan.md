@@ -111,11 +111,12 @@
 - [x] "拿东西走"规则引擎（追踪驱动 + ROI 过滤 + metadata）
 - [x] 事件记录到数据库（SQLite + 快照文件落盘）
 
-### Phase 4：Web 服务
-- [ ] FastAPI 后端搭建
-- [ ] WebSocket 实时画面推送
-- [ ] 事件查询 API
-- [ ] 前端监控页面
+### Phase 4：Web 服务 ✅
+- [x] FastAPI 后端搭建（依赖注入 create_app）
+- [x] WebSocket 实时画面推送（/ws/stream，FrameBus 桥接线程）
+- [x] 事件查询 API（/api/events，支持类型/时间/limit 过滤）
+- [x] 前端监控页面（实时画面 + 事件流，自动重连）
+- [x] 事件实时推送（/ws/events）+ 快照静态服务（/snapshots）
 
 ### Phase 5：优化与部署
 - [ ] IP 摄像头 RTSP 接入

@@ -12,8 +12,9 @@ import numpy as np
 from src.analyzer.base import BaseAnalyzer
 from src.capture.base import BaseCapture
 from src.common.logger import setup_logger
-from src.common.models import FrameData, Roi
+from src.common.models import Event, FrameData, Roi
 from src.detector.base import BaseDetector
+from src.server.frame_bus import FrameBus
 from src.storage.base import BaseEventStore
 
 logger = setup_logger(__name__)
@@ -33,12 +34,16 @@ class Pipeline:
     def __init__(self, capture: BaseCapture, detector: BaseDetector,
                  analyzer: BaseAnalyzer, fps_window: int = 30,
                  event_store: BaseEventStore | None = None,
-                 roi: Roi | None = None):
+                 roi: Roi | None = None,
+                 frame_bus: FrameBus | None = None,
+                 stream_quality: int = 70):
         self._capture = capture
         self._detector = detector
         self._analyzer = analyzer
         self._event_store = event_store
         self._roi = roi
+        self._frame_bus = frame_bus
+        self._stream_quality = stream_quality
         self._frame_id = 0
         self._running = False
         self._frame_times: deque[float] = deque(maxlen=fps_window)
@@ -67,18 +72,26 @@ class Pipeline:
                 frame_data.detections = self._detector.detect(frame)
 
                 events = self._analyzer.analyze(frame_data)
+                event_records: list[dict] = []
                 for event in events:
                     logger.info("事件: [%s] %s", event.event_type, event.description)
+                    record_id: int | None = None
                     if self._event_store is not None:
                         try:
-                            self._event_store.save(event)
+                            record_id = self._event_store.save(event)
                         except Exception:
                             logger.exception("事件持久化失败")
+                    event_records.append(self._event_to_dict(event, record_id))
 
                 self._frame_times.append(time.perf_counter() - t0)
                 fps = self._compute_fps()
 
                 annotated = self._draw_overlay(frame, frame_data, fps)
+
+                if self._frame_bus is not None:
+                    self._publish_frame(annotated)
+                    for rec in event_records:
+                        self._frame_bus.publish_event(rec)
 
                 if show_window:
                     cv2.imshow("Camera Monitor", annotated)
@@ -134,3 +147,18 @@ class Pipeline:
         if track_id is None:
             return (0, 255, 0)
         return _PALETTE[track_id % len(_PALETTE)]
+
+    def _publish_frame(self, annotated: np.ndarray) -> None:
+        ok, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, self._stream_quality])
+        if ok:
+            self._frame_bus.publish_frame(buf.tobytes())
+
+    @staticmethod
+    def _event_to_dict(event: Event, record_id: int | None) -> dict:
+        return {
+            "id": record_id,
+            "event_type": event.event_type,
+            "description": event.description,
+            "timestamp": event.timestamp.isoformat(),
+            "metadata": event.metadata or {},
+        }
